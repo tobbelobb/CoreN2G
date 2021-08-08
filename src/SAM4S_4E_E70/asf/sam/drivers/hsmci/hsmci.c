@@ -114,7 +114,9 @@ extern void debugPrintf(const char* fmt, ...);
   // XDMAC is used for transfer
 #  include "xdmac.h"
 #  define XDMAC_HW_ID_HSMCI    0
-// DC removed conditional definition of CONF_HSMCI_XDMAC_CHANNEL because it must be defined in conf_sd_mmc.h so that RRF can get at it too
+#  ifndef CONF_HSMCI_XDMAC_CHANNEL
+#    define CONF_HSMCI_XDMAC_CHANNEL 0
+#  endif
 #else
 #  error Not supported device
 #endif

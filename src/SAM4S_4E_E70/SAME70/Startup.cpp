@@ -30,20 +30,20 @@
 #undef __SOFTFP__			// should not be defined, but Eclipse thinks it is
 
 #include <CoreIO.h>
-#include <Flash.h>
 
 /* Initialize segments */
 extern uint32_t _sfixed;
+//extern uint32_t _efixed;
 extern uint32_t _etext;
 extern uint32_t _srelocate;
 extern uint32_t _erelocate;
 extern uint32_t _szero;
 extern uint32_t _ezero;
-extern uint32_t _estack;
+//extern uint32_t _sstack;
 
 #if SUPPORT_CAN
-extern uint32_t _szero_nocache;
-extern uint32_t _ezero_nocache;
+extern uint32_t _sCanMessage;
+extern uint32_t _eCanMessage;
 #endif
 
 extern "C" void __libc_init_array();
@@ -71,74 +71,40 @@ const uint32_t FlashWaitStates = 5;
                             CKGR_PLLAR_PLLACOUNT(0x3fU) | CKGR_PLLAR_DIVA_BYPASS)
 #define SYS_BOARD_MCKR      (PMC_MCKR_PRES_CLK_1 | PMC_MCKR_CSS_PLLA_CLK | PMC_MCKR_MDIV_PCK_DIV2)
 
-// This must be marked noinline so that R0 is loaded with the required value for SP. Return is via LR so it's OK to return with a different SP.
-inline void SetStackPointer(uint32_t *topOfStack)
-{
-	__asm volatile("msr msp, %0" : : "r"(topOfStack));
-}
-
 /**
  * \brief This is the code that gets called on processor reset.
  * To initialize the device, and call the main() routine.
  */
 extern "C" [[noreturn]] void Reset_Handler() noexcept
 {
-#if SUPPORT_CAN
-	// If TCM is allocated then SP may point beyond the end of RAM, so move it
-	SetStackPointer(&_ezero_nocache);
-#endif
+	uint32_t *pSrc = &_etext;
+	uint32_t *pDest = &_srelocate;
 
-	// Initialize the relocate segment
+	if (pSrc != pDest)
 	{
-		const uint32_t *pSrc = &_etext;
-		uint32_t *pDest = &_srelocate;
-
-		if (pSrc != pDest)
+		for (; pDest < &_erelocate; )
 		{
-			while (pDest < &_erelocate)
-			{
-				*pDest++ = *pSrc++;
-			}
+			*pDest++ = *pSrc++;
 		}
 	}
 
-	/* Clear the zero segment */
-	for (uint32_t *pDest = &_szero; pDest < &_ezero;)
+	// Clear the zero segment
+	for (pDest = &_szero; pDest < &_ezero; )
 	{
 		*pDest++ = 0;
 	}
 
-	// Check that no TCM is allocated before we relocate the stack to the top of memory. This uses a RAMFUNC, so we must initialise the relocate segment before here.
-	// The temporary stack we are on is in the non-cached memory segment, so don't clear that segment until after we have relocated the stack.
-	if (Flash::ReadGpNvmBits() & ((1ul << 7) | (1ul << 8)))
-	{
-		// TCM is allocated - we are probably downgrading from later firmware that uses TCM. Disable TCM and reboot.
-		Flash::ClearGpNvm(7);
-		Flash::ClearGpNvm(8);
-		// On some microchip processors, we need a delay between writing to flash and resetting
-		for (unsigned int i = 0; i < 10000; ++i)
-		{
-			__asm volatile("nop");
-		}
-		Reset();
-	}
-
-	// Now it's safe to reset the stack pointer to the top of memory
-	SetStackPointer(&_estack);
-
 #if SUPPORT_CAN
-	// Clear the nocache RAM segment
-	for (uint32_t *pDest = &_szero_nocache; pDest < &_ezero_nocache;)
+	// Clear the CAN message buffer segment
+	for (pDest = &_sCanMessage; pDest < &_eCanMessage; )
 	{
 		*pDest++ = 0;
 	}
 #endif
 
-	// Set the vector table base address
-	{
-		const uint32_t * const pSrc = (uint32_t *) & _sfixed;
-		SCB->VTOR = ((uint32_t) pSrc & SCB_VTOR_TBLOFF_Msk);
-	}
+	/* Set the vector table base address */
+	pSrc = (uint32_t *) & _sfixed;
+	SCB->VTOR = ((uint32_t) pSrc & SCB_VTOR_TBLOFF_Msk);
 
 	// Enable FPU
 	static_assert(__FPU_USED);
@@ -146,7 +112,7 @@ extern "C" [[noreturn]] void Reset_Handler() noexcept
 	__DSB();
 	__ISB();
 
-	// Initialize the C library
+	/* Initialize the C library */
 	__libc_init_array();
 
 	// Set up the standard clocks
@@ -162,7 +128,7 @@ extern "C" [[noreturn]] void Reset_Handler() noexcept
 	// Run the application
 	AppMain();
 
-	// Infinite loop
+	/* Infinite loop */
 	while (1);
 }
 

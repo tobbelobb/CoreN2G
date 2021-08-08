@@ -9,8 +9,7 @@
  */
 
 #include <sys/stat.h>
-#include <cerrno>
-#include <new>
+#include <errno.h>
 
 #undef errno
 
@@ -23,7 +22,7 @@ int errno;
 extern char _end;								// defined by the linker script
 extern char _estack;
 
-[[noreturn]] void OutOfMemoryHandler() noexcept;				// this must be provided by the client application
+void OutOfMemoryHandler() noexcept;				// this must be provided by the client application
 
 const char *sysStackLimit = &_estack - SystemStackSize;
 
@@ -38,7 +37,7 @@ extern "C" void * _sbrk(ptrdiff_t incr) noexcept
 	char *newHeap = heapTop + incr;
 	if (newHeap <= heapLimit)
 	{
-		void * const prev_heap = heapTop;
+		void *prev_heap = heapTop;
 		heapTop = newHeap;
 		return prev_heap;
 	}
@@ -48,20 +47,6 @@ extern "C" void * _sbrk(ptrdiff_t incr) noexcept
 	// The out of memory handle usually terminates, but in case it doesn't, try to return failure. Unfortunately, this doesn't seem to work with newlib.
 	errno = ENOMEM;
 	return reinterpret_cast<void*>(-1);
-}
-
-/**
- * \brief Allocate memory permanently. In multi-threaded environments, take the malloc mutex before calling this.
- */
-void *CoreAllocPermanent(size_t sz, std::align_val_t align) noexcept
-{
-	char * const newHeapLimit = reinterpret_cast<char *>(reinterpret_cast<uint32_t>(heapLimit - sz) & ~((uint32_t)align - 1));
-	if (newHeapLimit < heapTop)
-	{
-		OutOfMemoryHandler();
-	}
-	heapLimit = newHeapLimit;
-	return newHeapLimit;
 }
 
 /**

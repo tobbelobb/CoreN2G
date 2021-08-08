@@ -33,7 +33,6 @@ constexpr uint32_t AdcConversionTimeout = 5;		// milliseconds
 static uint32_t conversionsStarted = 0;
 static uint32_t conversionsCompleted = 0;
 static uint32_t conversionTimeouts = 0;
-static uint32_t errors = 0;
 
 static AnalogInCallbackFunction tempCallbackFn = nullptr;
 static CallbackParameter tempCallbackParam;
@@ -58,7 +57,7 @@ public:
 	virtual bool StartConversion() noexcept = 0;
 	virtual void ExecuteCallbacks() noexcept = 0;
 
-	bool ConversionDone() noexcept;
+	State GetState() const noexcept { return state; }
 	bool EnableChannel(unsigned int chan, AnalogInCallbackFunction fn, CallbackParameter param, uint32_t p_ticksPerCall) noexcept;
 	bool SetCallback(unsigned int chan, AnalogInCallbackFunction fn, CallbackParameter param, uint32_t p_ticksPerCall) noexcept;
 	bool IsChannelEnabled(unsigned int chan) const noexcept;
@@ -168,22 +167,6 @@ void AdcBase::ResultReadyCallback(DmaCallbackReason reason) noexcept
 {
 	static_cast<AdcBase *>(cp.vp)->ResultReadyCallback(reason);
 }
-
-// Check whether the conversion was successful
-bool AdcBase::ConversionDone() noexcept
-{
-	if (state == State::ready)
-	{
-		if (dmaFinishedReason == DmaCallbackReason::complete)
-		{
-			return true;
-		}
-
-		++errors;
-	}
-	return false;
-}
-
 
 class AdcClass : public AdcBase
 {
@@ -549,7 +532,7 @@ void AnalogIn::TaskLoop(void*) noexcept
 		bool conversionStarted = false;
 		for (AdcBase*& adc : adcs)
 		{
-			if (adc->ConversionDone())
+			if (adc->GetState() == AdcClass::State::ready)
 			{
 				adc->ExecuteCallbacks();
 			}
@@ -693,12 +676,11 @@ void AnalogIn::EnableTemperatureSensor(AnalogInCallbackFunction fn, CallbackPara
 	TSENS->CTRLB.reg = TSENS_CTRLB_START;
 }
 
-void AnalogIn::GetDebugInfo(uint32_t &convsStarted, uint32_t &convsCompleted, uint32_t &convTimeouts, uint32_t& errs) noexcept
+void AnalogIn::GetDebugInfo(uint32_t &convsStarted, uint32_t &convsCompleted, uint32_t &convTimeouts) noexcept
 {
 	convsStarted = conversionsStarted;
 	convsCompleted = conversionsCompleted;
 	convTimeouts = conversionTimeouts;
-	errs = errors;
 }
 
 #endif

@@ -129,9 +129,8 @@ namespace AnalogOut
 			else
 			{
 				// Just update the compare register
-				// Don't call hri_tccount16_write_CCBUF_CCBUF_bf here! It loops for up to one TC period waiting for sync.
 				const uint16_t cc = ConvertRange(val, tcTop[device]);
-				tcdev->COUNT16.CCBUF[output].bit.CCBUF = cc;
+				hri_tccount16_write_CCBUF_CCBUF_bf(tcdev, output, cc);
 			}
 
 			SetPinFunction(pin, peri);

@@ -22,12 +22,10 @@ public:
 	union Errors
 	{
 		uint32_t all;
-		struct
-		{
-			uint32_t uartOverrun : 11,
-					 framing : 11,
-					 bufferOverrun : 10;
-		};
+		uint32_t uartOverrun : 11,
+				 framing : 11,
+				 bufferOverrun : 10;
+
 		Errors() noexcept { all = 0; }
 	};
 
@@ -83,7 +81,6 @@ private:
 	const uint8_t sercomNumber;
 	const uint8_t rxPad;
     uint8_t numInterruptBytesMatched;
-    bool bufferOverrunPending;
 
     static constexpr uint8_t interruptSeq[2] = { 0xF0, 0x0F };
 };

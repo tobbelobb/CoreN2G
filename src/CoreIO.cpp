@@ -25,9 +25,8 @@
 # include <hri_wdt_c21.h>
 # include <hal_gpio.h>
 #elif SAM4E || SAM4S || SAME70
-# include <pmc/pmc.h>
-# include <pio/pio.h>
-# include <rstc/rstc.h>
+# include <asf/sam/drivers/pmc/pmc.h>
+# include <asf/sam/drivers/pio/pio.h>
 #endif
 
 
@@ -155,26 +154,13 @@ void ClearPinFunction(Pin p) noexcept
 #endif
 }
 
-// Enable the pullup resistor
-void EnablePullup(Pin pin) noexcept
+// Enable or disable the pullup[ resistor
+void SetPullup(Pin p, bool on) noexcept
 {
 #if SAM4E || SAM4S || SAME70
-	GpioPort(pin)->PIO_PPDDR = GpioMask(pin);						// turn off pulldown
-	GpioPort(pin)->PIO_PUER = GpioMask(pin);						// turn on pullup
+	pio_pull_up(GpioPort(p), GpioMask(p), (uint32_t)on) ;
 #else
-	PORT->Group[GpioPortNumber(pin)].OUTSET.reg = GpioMask(pin);
-	PORT->Group[GpioPortNumber(pin)].PINCFG[GpioPinNumber(pin)].reg |= PORT_PINCFG_PULLEN;
-#endif
-}
-
-// Disable the pullup resistor
-void DisablePullup(Pin pin) noexcept
-{
-#if SAM4E || SAM4S || SAME70
-	GpioPort(pin)->PIO_PUDR = GpioMask(pin);						// turn off pullup
-	GpioPort(pin)->PIO_PPDDR = GpioMask(pin);						// turn off pulldown
-#else
-	PORT->Group[GpioPortNumber(pin)].PINCFG[GpioPinNumber(pin)].reg &= ~PORT_PINCFG_PULLEN;
+	gpio_set_pin_pull_mode(p, (on) ? GPIO_PULL_UP : GPIO_PULL_OFF);
 #endif
 }
 
@@ -196,8 +182,10 @@ void SetPinMode(Pin pin, enum PinMode mode, uint32_t debounceCutoff = 0) noexcep
 		switch (mode)
 		{
 		case INPUT:
+			ClearPinFunction(pin);
 #if SAM4E || SAM4S || SAME70
 			pmc_enable_periph_clk(PioIds[GpioPortNumber(pin)]);				// enable peripheral for clocking input *
+			GpioPort(pin)->PIO_PUDR = GpioMask(pin);						// turn off pullup
 			GpioPort(pin)->PIO_PPDDR = GpioMask(pin);						// turn off pulldown
 			pio_set_input(GpioPort(pin), GpioMask(pin), (debounceCutoff == 0) ? 0 : PIO_DEBOUNCE);
 			if (debounceCutoff != 0)
@@ -205,39 +193,35 @@ void SetPinMode(Pin pin, enum PinMode mode, uint32_t debounceCutoff = 0) noexcep
 				pio_set_debounce_filter(GpioPort(pin), GpioMask(pin), debounceCutoff);	// enable debounce filter with specified cutoff frequency
 			}
 #else
-			ClearPinFunction(pin);
 			// The direction must be set before the pullup, otherwise setting the pullup doesn't work
-			PORT->Group[GpioPortNumber(pin)].DIRCLR.reg = GpioMask(pin);
-			PORT->Group[GpioPortNumber(pin)].WRCONFIG.reg = PORT_WRCONFIG_WRPINCFG | PORT_WRCONFIG_INEN | (GpioMask(pin) & 0xffff);
-			PORT->Group[GpioPortNumber(pin)].WRCONFIG.reg = PORT_WRCONFIG_HWSEL | PORT_WRCONFIG_WRPINCFG | PORT_WRCONFIG_INEN | ((GpioMask(pin) & 0xffff0000) >> 16);
-			PORT->Group[GpioPortNumber(pin)].PINCFG[GpioPinNumber(pin)].reg &= ~PORT_PINCFG_PULLEN;
+			gpio_set_pin_direction(pin, GPIO_DIRECTION_IN);
+			gpio_set_pin_pull_mode(pin, GPIO_PULL_OFF);
 #endif
 			break;
 
 		case INPUT_PULLUP:
+			ClearPinFunction(pin);
 #if SAM4E || SAM4S || SAME70
 			pmc_enable_periph_clk(PioIds[GpioPortNumber(pin)]);				// enable peripheral for clocking input *
+			GpioPort(pin)->PIO_PUER = GpioMask(pin);						// turn on pullup
 			GpioPort(pin)->PIO_PPDDR = GpioMask(pin);						// turn off pulldown
-			pio_set_input(GpioPort(pin), GpioMask(pin), (debounceCutoff == 0) ? PIO_PULLUP : PIO_PULLUP | PIO_DEBOUNCE);
+			pio_set_input(GpioPort(pin), GpioMask(pin), (debounceCutoff == 0) ? 0 : PIO_DEBOUNCE);
 			if (debounceCutoff != 0)
 			{
 				pio_set_debounce_filter(GpioPort(pin), GpioMask(pin), debounceCutoff);	// enable debounce filter with specified cutoff frequency
 			}
 #else
-			ClearPinFunction(pin);
 			// The direction must be set before the pullup, otherwise setting the pullup doesn't work
-			PORT->Group[GpioPortNumber(pin)].DIRCLR.reg = GpioMask(pin);
-			PORT->Group[GpioPortNumber(pin)].WRCONFIG.reg = PORT_WRCONFIG_WRPINCFG | PORT_WRCONFIG_INEN | (GpioMask(pin) & 0xffff);
-			PORT->Group[GpioPortNumber(pin)].WRCONFIG.reg = PORT_WRCONFIG_HWSEL | PORT_WRCONFIG_WRPINCFG | PORT_WRCONFIG_INEN | ((GpioMask(pin) & 0xffff0000) >> 16);
-			PORT->Group[GpioPortNumber(pin)].OUTSET.reg = GpioMask(pin);
-			PORT->Group[GpioPortNumber(pin)].PINCFG[GpioPinNumber(pin)].reg |= PORT_PINCFG_PULLEN;
+			gpio_set_pin_direction(pin, GPIO_DIRECTION_IN);
+			gpio_set_pin_pull_mode(pin, GPIO_PULL_UP);
 #endif
 			break;
 
 		case INPUT_PULLDOWN:
+			ClearPinFunction(pin);
 #if SAM4E || SAM4S || SAME70
 			pmc_enable_periph_clk(PioIds[GpioPortNumber(pin)]);				// enable peripheral for clocking input *
-			GpioPort(pin)->PIO_PUDR = GpioMask(pin);						// turn off pullup
+			GpioPort(pin)->PIO_PPDDR = GpioMask(pin);						// turn off pullup
 			GpioPort(pin)->PIO_PPDER = GpioMask(pin);						// turn on pulldown
 			pio_set_input(GpioPort(pin), GpioMask(pin), (debounceCutoff == 0) ? 0 : PIO_DEBOUNCE);
 			if (debounceCutoff != 0)
@@ -245,17 +229,14 @@ void SetPinMode(Pin pin, enum PinMode mode, uint32_t debounceCutoff = 0) noexcep
 				pio_set_debounce_filter(GpioPort(pin), GpioMask(pin), debounceCutoff);	// enable debounce filter with specified cutoff frequency
 			}
 #else
-			ClearPinFunction(pin);
 			// The direction must be set before the pullup, otherwise setting the pullup doesn't work
-			PORT->Group[GpioPortNumber(pin)].DIRCLR.reg = GpioMask(pin);
-			PORT->Group[GpioPortNumber(pin)].WRCONFIG.reg = PORT_WRCONFIG_WRPINCFG | PORT_WRCONFIG_INEN | (GpioMask(pin) & 0xffff);
-			PORT->Group[GpioPortNumber(pin)].WRCONFIG.reg = PORT_WRCONFIG_HWSEL | PORT_WRCONFIG_WRPINCFG | PORT_WRCONFIG_INEN | ((GpioMask(pin) & 0xffff0000) >> 16);
-			PORT->Group[GpioPortNumber(pin)].OUTCLR.reg = GpioMask(pin);
-			PORT->Group[GpioPortNumber(pin)].PINCFG[GpioPinNumber(pin)].reg |= PORT_PINCFG_PULLEN;
+			gpio_set_pin_direction(pin, GPIO_DIRECTION_IN);
+			gpio_set_pin_pull_mode(pin, GPIO_PULL_DOWN);
 #endif
 			break;
 
 		case OUTPUT_LOW:
+			ClearPinFunction(pin);
 #if SAM4E || SAM4S || SAME70
 			pio_set_output(GpioPort(pin), GpioMask(pin), 0, 0, 0);
 			// If all pins are output, disable PIO Controller clocking, reduce power consumption
@@ -264,15 +245,13 @@ void SetPinMode(Pin pin, enum PinMode mode, uint32_t debounceCutoff = 0) noexcep
 				pmc_disable_periph_clk(PioIds[GpioPortNumber(pin)]);
 			}
 #else
-			ClearPinFunction(pin);
-			PORT->Group[GpioPortNumber(pin)].OUTCLR.reg = GpioMask(pin);
-			PORT->Group[GpioPortNumber(pin)].DIRSET.reg = GpioMask(pin);
-			PORT->Group[GpioPortNumber(pin)].WRCONFIG.reg = PORT_WRCONFIG_WRPINCFG | PORT_WRCONFIG_INEN | (GpioMask(pin) & 0xffff);
-			PORT->Group[GpioPortNumber(pin)].WRCONFIG.reg = PORT_WRCONFIG_HWSEL | PORT_WRCONFIG_WRPINCFG | PORT_WRCONFIG_INEN | ((GpioMask(pin) & 0xffff0000) >> 16);
+			gpio_set_pin_level(pin, false);
+			gpio_set_pin_direction(pin, GPIO_DIRECTION_OUT);
 #endif
 			break;
 
 		case OUTPUT_HIGH:
+			ClearPinFunction(pin);
 #if SAM4E || SAM4S || SAME70
 			pio_set_output(GpioPort(pin), GpioMask(pin), 1, 0, 0);
 			// If all pins are output, disable PIO Controller clocking, reduce power consumption
@@ -281,27 +260,22 @@ void SetPinMode(Pin pin, enum PinMode mode, uint32_t debounceCutoff = 0) noexcep
 				pmc_disable_periph_clk(PioIds[GpioPortNumber(pin)]);
 			}
 #else
-			ClearPinFunction(pin);
-			PORT->Group[GpioPortNumber(pin)].OUTSET.reg = GpioMask(pin);
-			PORT->Group[GpioPortNumber(pin)].DIRSET.reg = GpioMask(pin);
-			PORT->Group[GpioPortNumber(pin)].WRCONFIG.reg = PORT_WRCONFIG_WRPINCFG | PORT_WRCONFIG_INEN | (GpioMask(pin) & 0xffff);
-			PORT->Group[GpioPortNumber(pin)].WRCONFIG.reg = PORT_WRCONFIG_HWSEL | PORT_WRCONFIG_WRPINCFG | PORT_WRCONFIG_INEN | ((GpioMask(pin) & 0xffff0000) >> 16);
+			gpio_set_pin_level(pin, true);
+			gpio_set_pin_direction(pin, GPIO_DIRECTION_OUT);
 #endif
 			break;
 
 		case AIN:
 #if SAM4E || SAM4S || SAME70
-			// The SAME70 errata says we must disable the pullup resistor before enabling the AFEC channel
 			GpioPort(pin)->PIO_PUDR = GpioMask(pin);						// turn off pullup
 			GpioPort(pin)->PIO_PPDDR = GpioMask(pin);						// turn off pulldown
 			// Ideally we should record which pins are being used as analog inputs, then we can disable the clock
 			// on any PIO that is being used solely for outputs and ADC inputs. But for now we don't do that.
 #else
-			PORT->Group[GpioPortNumber(pin)].PINCFG[GpioPinNumber(pin)].reg &= ~PORT_PINCFG_PULLEN;
-			PORT->Group[GpioPortNumber(pin)].DIRCLR.reg = GpioMask(pin);
-			PORT->Group[GpioPortNumber(pin)].WRCONFIG.reg = PORT_WRCONFIG_WRPINCFG | (GpioMask(pin) & 0xffff);
-			PORT->Group[GpioPortNumber(pin)].WRCONFIG.reg = PORT_WRCONFIG_HWSEL | PORT_WRCONFIG_WRPINCFG | ((GpioMask(pin) & 0xffff0000) >> 16);
-			SetPinFunction(pin, GpioPinFunction::B);						// ADC is always on peripheral B for the SAMC21 and SAME5x
+			// The SAME70 errata says we must disable the pullup resistor before enabling the AFEC channel
+			gpio_set_pin_pull_mode(pin, GPIO_PULL_OFF);
+			gpio_set_pin_direction(pin, GPIO_DIRECTION_OFF);				// disable the data input buffer
+			SetPinFunction(pin, GpioPinFunction::B);						// ADC is always on peripheral B for the SAMC21 an SAME5x
 #endif
 			break;
 
@@ -349,9 +323,9 @@ uint32_t millis() noexcept
 
 uint64_t millis64() noexcept
 {
-	const irqflags_t flags = IrqSave();
+	const irqflags_t flags = cpu_irq_save();
 	const uint64_t ret = g_ms_ticks;			// take a copy with interrupts disabled to guard against rollover while we read it
-	IrqRestore(flags);
+	cpu_irq_restore(flags);
 	return ret;
 }
 
@@ -368,52 +342,6 @@ void delay(uint32_t ms) noexcept
 void CoreSysTick() noexcept
 {
 	g_ms_ticks++;
-}
-
-// Members of class MicrosecondsTimer
-MicrosecondsTimer::MicrosecondsTimer() noexcept
-{
-	Reset();
-}
-
-void MicrosecondsTimer::Reset() noexcept
-{
-	for (;;)
-	{
-		const uint32_t c1 = GetCurrentCycles();
-		const uint32_t m = millis();
-		const uint32_t c2 = GetCurrentCycles();
-		if (c2 < c1)
-		{
-			startMillis = m;
-			startCycles = c2;
-			return;
-		}
-	}
-}
-
-uint32_t MicrosecondsTimer::Read() noexcept
-{
-	uint32_t cyclesNow, millisNow;
-	for (;;)
-	{
-		cyclesNow = GetCurrentCycles();
-		millisNow = millis();
-		const uint32_t c2 = GetCurrentCycles();
-		if (c2 < cyclesNow)
-		{
-			break;
-		}
-	}
-
-	const uint32_t cyclesPerTick = (SysTick->LOAD & 0x00FFFFFF) + 1;
-	uint32_t sc = startCycles;
-	if (sc < cyclesNow)
-	{
-		sc += cyclesPerTick;
-		--millisNow;
-	}
-	return ((sc - cyclesNow) * 1000)/cyclesPerTick + (millisNow - startMillis) * 1000;
 }
 
 // Optimised version of memcpy for when we know that the source and destination are 32-bit aligned and a whole number of 32-bit words are to be copied
@@ -511,11 +439,7 @@ void WatchdogResetSecondary() noexcept
 
 void Reset() noexcept
 {
-#if SAME70 || SAM4E || SAM4S
-	rstc_start_software_reset(RSTC);
-#else
 	SCB->AIRCR = (0x5FA << 16) | (1u << 2);						// reset the processor
-#endif
 	for (;;) { }
 }
 
@@ -662,9 +586,9 @@ extern "C" uint32_t random32() noexcept
 #elif SAME70
 
 	while (!(TRNG->TRNG_ISR & TRNG_ISR_DATRDY)) {}
-	return TRNG->TRNG_ODATA;
+	return (uint32_t)TRNG->TRNG_ODATA;
 
-#else		// processor doesn't have a true random number generator
+#else
 
 	static bool isInitialised = false;
 
